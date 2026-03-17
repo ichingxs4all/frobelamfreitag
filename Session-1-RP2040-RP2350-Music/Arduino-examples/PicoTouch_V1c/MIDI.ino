@@ -1,17 +1,30 @@
-void handleNoteOn(byte channel, byte pitch, byte velocity) {
-  // Do whatever you want when a note is pressed.
+void handleProgramChangeUSB(byte channel, byte number){
+  MIDI.sendProgramChange(number, channel);
+}
 
-  // Try to keep your callbacks short (no delays ect)
-  // otherwise it would slow down the loop() and have a bad impact
-  // on real-time performance.
+void handleNoteOnUSB(byte channel, byte pitch, byte velocity) {
+  MIDI.sendNoteOn(pitch,velocity,channel);
+}
+
+void handleNoteOffUSB(byte channel, byte pitch, byte velocity) {
+  MIDI.sendNoteOff(pitch,velocity,channel);
+}
+
+void handleProgramChange(byte channel, byte number){
+  usbMIDI.sendProgramChange(number, channel);
+}
+
+void handleNoteOn(byte channel, byte pitch, byte velocity) {
+  usbMIDI.sendNoteOn(pitch,velocity,channel);
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity) {
-  // Do something when the note is released.
-  // Note that NoteOn messages with 0 velocity are interpreted as NoteOffs.
+  usbMIDI.sendNoteOff(pitch,velocity,channel);
 }
 
 void handleControlChange(byte channel, byte number, byte value) {
+   MIDI.sendControlChange(number, value, channel);
+
   if (channel == controlChannel) {
     digitalWrite(LED_BUILTIN, HIGH);
     switch (number) {

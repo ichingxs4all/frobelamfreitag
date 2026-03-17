@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WebMIDI OSC PRO</title>
+
+<style>
+
+body{
+    margin:0;
+    background:#111;
+    color:white;
+    font-family:system-ui;
+    text-align:center;
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:14px;
+    padding:18px;
+}
+
+.control{
+    border-radius:12px;
+    padding:10px;
+    background:#222;
+}
+
+.value{
+    font-size:20px;
+    margin:4px;
+}
+
+input,select{
+    width:100%;
+    margin-top:4px;
+}
+
+button.big{
+    height:65px;
+    font-size:16px;
+}
+
+.topbar{
+    padding:10px;
+    background:#1a1a1a;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+
+<select id="midiOut"></select>
+<select id="midiIn"></select>
+
+<input id="wsUrl" value="ws://localhost:8080">
+<button onclick="connectWS()">WS Connect</button>
+
+<button onclick="savePreset()">Save Preset</button>
+<button onclick="loadPreset()">Load Preset</button>
+
+</div>
+
+<h3>Knobs</h3>
+<div id="knobs" class="grid"></div>
+
+<h3>Buttons</h3>
+<div id="buttons" class="grid"></div>
+
+<script>
+
+// ================= MIDI =================
+
+let midiAccess, midiOut=null, midiIn=null;
+const CHANNEL=0;
+
+navigator.requestMIDIAccess().then(access=>{
+    midiAccess=access;
+
+    const outSel=midiOutSel=document.getElementById("midiOut");
+    const inSel=midiInSel=document.getElementById("midiIn");
+
+    access.outputs.forEach(p=>{
+        outSel.add(new Option(p.name,p.id));
+    });
+
+    access.inputs.forEach(p=>{
+        inSel.add(new Option(p.name,p.id));
+    });
+
+    outSel.onchange=()=>midiOut=access.outputs.get(outSel.value);
+
+    inSel.onchange=()=>{
+        midiIn=access.inputs.get(inSel.value);
+        midiIn.onmidimessage=handleMidiIn;
+    };
+
+    if(outSel.options.length){
+        outSel.selectedIndex=0;
+        midiOut=access.outputs.get(outSel.value);
+    }
+});
+
+// ---------- MIDI SEND ----------
+function sendMIDI(cc,val,relative=false){
+
+    if(!midiOut) return;
+
+    midiOut.send([0xB0|CHANNEL,cc,val]);
+}
+
+// ================= WEBSOCKET =================
+
+let ws=null;
+
+function connectWS(){
+    ws=new WebSocket(document.getElementById("wsUrl").value);
+}
+
+function sendWS(address,value,label){
+    if(!ws||ws.readyState!==1) return;
+
+    ws.send(JSON.stringify({
+        type:"osc",
+        address,
+        value,
+        label
+    }));
+}
+
+// ================= CONFIG =================
+
+const REL_MODES=[
+    "absolute",
+    "relative-1", // 65/63
+    "relative-2", // 1/127
+    "relative-3"  // 17/15
+];
+
+const knobs=Array.from({length:16},(_,i)=>({
+    label:"Knob "+(i+1),
+    cc:i,
+    osc:"/knob/"+(i+1),
+    value:0,
+    color:"#00bcd4",
+    mode:"absolute"
+}));
+
+const buttons=Array.from({length:16},(_,i)=>({
+    label:"Button "+(i+1),
+    cc:16+i,
+    osc:"/button/"+(i+1),
+    color:"#ff5722"
+}));
+
+// ================= RELATIVE ENCODER =================
+
+function applyRelative(mode,current,delta){
+
+    if(mode==="absolute") return delta;
+
+    if(mode==="relative-1"){
+        if(delta===65) return current+1;
+        if(delta===63) return current-1;
+    }
+
+    if(mode==="relative-2"){
+        if(delta===1) return current+1;
+        if(delta===127) return current-1;
+    }
+
+    if(mode==="relative-3"){
+        if(delta===17) return current+1;
+        if(delta===15) return current-1;
+    }
+
+    return current;
+}
+
+// ================= MIDI IN =================
+
+function handleMidiIn(e){
+
+    const [status,cc,value]=e.data;
+    if((status&0xF0)!==0xB0) return;
+
+    knobs.forEach(k=>{
+        if(k.cc===cc){
+            k.value=value;
+            k.updateUI(value);
+        }
+    });
+}
+
+// ================= PRESETS =================
+
+function savePreset(){
+    localStorage.setItem("webMidiPreset",
+        JSON.stringify({knobs,buttons}));
+}
+
+function loadPreset(){
+    const data=localStorage.getItem("webMidiPreset");
+    if(!data) return;
+
+    const parsed=JSON.parse(data);
+
+    Object.assign(knobs,parsed.knobs);
+    Object.assign(buttons,parsed.buttons);
+
+    location.reload();
+}
+
+// ================= UI =================
+
+function knobUI(cfg){
+
+    const div=document.createElement("div");
+    div.className="control";
+
+    const label=input(cfg.label,v=>cfg.label=v);
+
+    const slider=document.createElement("input");
+    slider.type="range";
+    slider.min=0;
+    slider.max=127;
+
+    const value=document.createElement("div");
+    value.className="value";
+
+    const cc=input(cfg.cc,v=>cfg.cc=parseInt(v)||0,"number");
+
+    const osc=input(cfg.osc,v=>cfg.osc=v);
+
+    const mode=document.createElement("select");
+    REL_MODES.forEach(m=>mode.add(new Option(m,m)));
+    mode.value=cfg.mode;
+    mode.onchange=e=>cfg.mode=e.target.value;
+
+    slider.oninput=e=>{
+        let v=parseInt(e.target.value);
+
+        cfg.value=v;
+        value.textContent=v;
+
+        sendMIDI(cfg.cc,v);
+        sendWS(cfg.osc,v,cfg.label);
+    };
+
+    cfg.updateUI=v=>{
+        slider.value=v;
+        value.textContent=v;
+    };
+
+    cfg.updateUI(cfg.value);
+
+    div.append(
+        label,
+        slider,
+        value,
+        txt("CC"),cc,
+        txt("OSC"),osc,
+        mode
+    );
+
+    return div;
+}
+
+function buttonUI(cfg){
+
+    const div=document.createElement("div");
+    div.className="control";
+
+    const label=input(cfg.label,v=>cfg.label=v);
+
+    const btn=document.createElement("button");
+    btn.className="big";
+    btn.textContent="PRESS";
+
+    const cc=input(cfg.cc,v=>cfg.cc=parseInt(v)||0,"number");
+    const osc=input(cfg.osc,v=>cfg.osc=v);
+
+    const send=v=>{
+        sendMIDI(cfg.cc,v);
+        sendWS(cfg.osc,v,cfg.label);
+    };
+
+    btn.onpointerdown=()=>send(127);
+    btn.onpointerup=()=>send(0);
+    btn.onpointerleave=()=>send(0);
+
+    div.append(label,btn,txt("CC"),cc,txt("OSC"),osc);
+
+    return div;
+}
+
+// helpers
+function input(val,cb,type="text"){
+    const i=document.createElement("input");
+    i.type=type;
+    i.value=val;
+    i.onchange=e=>cb(e.target.value);
+    return i;
+}
+
+function txt(t){
+    return document.createTextNode(t);
+}
+
+// build UI
+knobs.forEach(k=>document.getElementById("knobs").appendChild(knobUI(k)));
+buttons.forEach(b=>document.getElementById("buttons").appendChild(buttonUI(b)));
+
+</script>
+</body>
+</html>

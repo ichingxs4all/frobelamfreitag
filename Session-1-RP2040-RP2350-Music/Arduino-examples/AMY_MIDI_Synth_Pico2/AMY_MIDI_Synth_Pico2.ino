@@ -4,6 +4,10 @@ bool enable_chorus = false;
 bool enable_echo = false;
 bool enable_reverb = true;
 
+static long last_millis = 0;
+static const long millis_interval = 250;
+static bool led_state = 0;
+
 void setup_polyphony() {
  
   amy_event e = amy_default_event();
@@ -29,14 +33,13 @@ void setup_polyphony() {
   if(enable_chorus) config_chorus(0.75f, 320, 0.5f, 0.5f);
 
   if(enable_echo) config_echo(0.5f, 150.0f, 160.0f, 0.5f, 0.0f); 
+
 }
 
 void setup() {
-#ifdef LED_BUILTIN
+
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 1);
-#endif
-
 
   amy_config_t amy_config = amy_default_config();
  
@@ -44,21 +47,20 @@ void setup() {
   // Install the default_synths on synths (MIDI chans) 1, 2, and 10 (this is the default).
   amy_config.features.default_synths = 1;
 
-  // If you want MIDI over UART (5-pin or 3-pin serial MIDI)
-  amy_config.midi = AMY_MIDI_IS_UART;
-
   // Pins for i2s board
-  // Note: On the Teensy, all these settings are ignored, and blck = 21, lrc = 20, dout = 7.
-    amy_config.audio = AMY_AUDIO_IS_I2S;
+  // On Pi Pico (RP2040, RP2350), i2s_lrc has to be i2s_bclk + 1, otherwise code will stop on an assert.
+  amy_config.audio = AMY_AUDIO_IS_I2S;
   amy_config.i2s_mclk = 7;
   amy_config.i2s_bclk = 8;
-  // On Pi Pico (RP2040, RP2350), i2s_lrc has to be i2s_bclk + 1, otherwise code will stop on an assert.
   amy_config.i2s_lrc = 9;
   amy_config.i2s_dout = 10;
   amy_config.i2s_din = 11;
 
+  // If you want MIDI over UART (5-pin or 3-pin serial MIDI)
+  //amy_config.midi = AMY_MIDI_IS_UART;
+  amy_config.midi = AMY_MIDI_IS_USB_GADGET;
+
   // Pins for UART MIDI
-  // Note: On the Teensy, these are ignored and midi_out = 35, midi_in = 34.
   amy_config.midi_out = 4;
   amy_config.midi_in = 5;
 
@@ -68,22 +70,20 @@ void setup() {
 
 }
 
-static long last_millis = 0;
-static const long millis_interval = 250;
-
-static bool led_state = 0;
 
 void loop() {
   // Your loop() must contain this call to amy:
   amy_update();
+  blink_led();
+ 
+}
 
-  // Flash on-board LED every 250ms
+void blink_led(){
+ // Flash on-board LED every 250ms
   int now_millis = millis();
   if ((now_millis - last_millis) > millis_interval) {
     last_millis = now_millis;
     led_state = !led_state;
-#ifdef LED_BUILTIN
     digitalWrite(LED_BUILTIN, led_state);  // turn the LED on (HIGH is the voltage level)
-#endif
   }
 }

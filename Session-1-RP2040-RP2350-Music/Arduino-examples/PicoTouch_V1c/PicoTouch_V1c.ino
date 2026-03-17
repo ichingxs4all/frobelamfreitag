@@ -6,16 +6,16 @@
 
 // Create a filtered analog object on pin A0:
 FilteredAnalog<12,      // Output precision in bits
-               8,       // The amount of filtering
-               uint32_t // The integer type for the calculations
+               2,       // The amount of filtering
+               uint16_t // The integer type for the calculations
                >
   analog0 = A0;
 
 
 // Create a filtered analog object on pin A0:
 FilteredAnalog<12,      // Output precision in bits
-               8,       // The amount of filtering
-               uint32_t // The integer type for the calculations
+               2,       // The amount of filtering
+               uint16_t // The integer type for the calculations
                >
   analog1 = A1;
 
@@ -23,8 +23,8 @@ FilteredAnalog<12,      // Output precision in bits
 
 // Create a filtered analog object on pin A0:
 FilteredAnalog<12,      // Output precision in bits
-               8,       // The amount of filtering
-               uint32_t // The integer type for the calculations
+              2,       // The amount of filtering
+               uint16_t // The integer type for the calculations
                >
   analog2 = A2;
 
@@ -59,26 +59,26 @@ bool debug = false;
 
 u_int8_t channel,note;
 
-u_int8_t transpose = 24;
+u_int8_t transpose = 48;
 
-int scale = 1 ; //Defaults to chromatic ( 0), 1 = pentatonic
+int scale = 0 ; //Defaults to chromatic ( 0), 1 = pentatonic
 
 bool calibrated = 0;
 
-int controlNo1 = 10;
-int controlNo2 = 11;
-int controlNo3 = 12;
+int controlNo1 = 70;
+int controlNo2 = 71;
+int controlNo3 = 72;
 
 int cctNo = 14;
 
 int split = 127;
 
-bool enablePot0 = true;
-bool enablePot1 = true;
-bool enablePot2 = true;
+bool enablePot0 = false;
+bool enablePot1 = false;
+bool enablePot2 = false;
 
-bool aftEnable = true;
-bool cctEnable = true;
+bool aftEnable = false;
+bool cctEnable = false;
 bool noteEnable = true;
 
 int lastAftertouch;
@@ -97,16 +97,19 @@ void setup() {
   }
 
   MIDI.setHandleNoteOn(handleNoteOn);  // Put only the name of the function
-  usbMIDI.setHandleNoteOn(handleNoteOn);
-
+  MIDI.setHandleNoteOff(handleNoteOff);
+  MIDI.setHandleProgramChange(handleProgramChange);
   MIDI.setHandleControlChange(handleControlChange);
+
+  
+  usbMIDI.setHandleNoteOn(handleNoteOnUSB);
+  usbMIDI.setHandleNoteOff(handleNoteOffUSB);
+  usbMIDI.setHandleProgramChange(handleProgramChangeUSB);
   usbMIDI.setHandleControlChange(handleControlChange);
 
-    // Do the same for NoteOffs
-  MIDI.setHandleNoteOff(handleNoteOff);
-  usbMIDI.setHandleNoteOff(handleNoteOff);
+ 
 
-    // Initialize MIDI, and listen to all MIDI channels
+  // Initialize MIDI, and listen to all MIDI channels
   // This will also call usb_midi's begin()
   MIDI.begin(MIDI_CHANNEL_OMNI);
   usbMIDI.begin(MIDI_CHANNEL_OMNI);

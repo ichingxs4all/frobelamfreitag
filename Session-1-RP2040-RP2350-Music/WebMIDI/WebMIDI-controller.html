@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>WebMIDI OSC Controller</title>
+
+<style>
+
+body{
+    margin:0;
+    background:#111;
+    color:white;
+    font-family:system-ui;
+    text-align:center;
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:16px;
+    padding:20px;
+}
+
+.control{
+    border-radius:14px;
+    padding:12px;
+    background:#222;
+}
+
+.label{
+    font-weight:bold;
+    margin-bottom:6px;
+}
+
+.value{
+    font-size:20px;
+    margin:6px 0;
+}
+
+input[type=range]{
+    width:100%;
+}
+
+input, select{
+    margin-top:6px;
+    font-size:14px;
+}
+
+button{
+    width:100%;
+    height:70px;
+    border:none;
+    border-radius:10px;
+    font-size:16px;
+    color:white;
+}
+
+</style>
+</head>
+
+<body>
+
+<h2>WebMIDI + WebSocket Controller</h2>
+
+<select id="midiOut"></select>
+<br>
+<input id="wsUrl" value="ws://localhost:8080">
+<button onclick="connectWS()">Connect WS</button>
+
+<h3>Knobs</h3>
+<div id="knobs" class="grid"></div>
+
+<h3>Buttons</h3>
+<div id="buttons" class="grid"></div>
+
+<script>
+
+// ================= MIDI =================
+let midiAccess, midiOut=null;
+const CHANNEL=0;
+
+navigator.requestMIDIAccess().then(access=>{
+    midiAccess=access;
+    const sel=document.getElementById("midiOut");
+
+    access.outputs.forEach(p=>{
+        const o=document.createElement("option");
+        o.value=p.id;
+        o.textContent=p.name;
+        sel.appendChild(o);
+    });
+
+    sel.onchange=()=>midiOut=midiAccess.outputs.get(sel.value);
+
+    if(sel.options.length){
+        sel.selectedIndex=0;
+        midiOut=midiAccess.outputs.get(sel.value);
+    }
+});
+
+function sendMIDI(cc,val){
+    if(!midiOut) return;
+    midiOut.send([0xB0|CHANNEL,cc,val]);
+}
+
+// ================= WEBSOCKET =================
+let ws=null;
+
+function connectWS(){
+    const url=document.getElementById("wsUrl").value;
+    ws=new WebSocket(url);
+
+    ws.onopen=()=>console.log("WS connected");
+    ws.onclose=()=>console.log("WS closed");
+}
+
+function sendWS(type,data){
+    if(!ws || ws.readyState!==1) return;
+
+    ws.send(JSON.stringify({
+        type,
+        ...data
+    }));
+}
+
+// ================= CONFIG =================
+
+const knobs = Array.from({length:16},(_,i)=>({
+    label:"Knob "+(i+1),
+    cc:i,
+    color:"#00bcd4",
+    value:0
+}));
+
+const buttons = Array.from({length:16},(_,i)=>({
+    label:"Button "+(i+1),
+    cc:16+i,
+    color:"#ff5722"
+}));
+
+// ================= UI BUILD =================
+
+function createKnob(cfg){
+
+    const div=document.createElement("div");
+    div.className="control";
+    div.style.background=cfg.color+"22";
+
+    const label=document.createElement("input");
+    label.value=cfg.label;
+    label.className="label";
+
+    const slider=document.createElement("input");
+    slider.type="range";
+    slider.min=0;
+    slider.max=127;
+
+    const value=document.createElement("div");
+    value.className="value";
+    value.textContent=cfg.value;
+
+    const cc=document.createElement("input");
+    cc.type="number";
+    cc.min=0;
+    cc.max=127;
+    cc.value=cfg.cc;
+
+    const color=document.createElement("input");
+    color.type="color";
+    color.value=cfg.color;
+
+    // --- events ---
+    slider.oninput=e=>{
+        cfg.value=parseInt(e.target.value);
+        value.textContent=cfg.value;
+
+        sendMIDI(cfg.cc,cfg.value);
+
+        sendWS("cc",{
+            cc:cfg.cc,
+            value:cfg.value,
+            label:cfg.label
+        });
+    };
+
+    label.onchange=e=>cfg.label=e.target.value;
+
+    cc.onchange=e=>cfg.cc=parseInt(e.target.value)||0;
+
+    color.oninput=e=>{
+        cfg.color=e.target.value;
+        div.style.background=cfg.color+"22";
+    };
+
+    div.append(label,slider,value,
+        document.createTextNode("CC"),cc,
+        color);
+
+    return div;
+}
+
+function createButton(cfg){
+
+    const div=document.createElement("div");
+    div.className="control";
+    div.style.background=cfg.color+"22";
+
+    const label=document.createElement("input");
+    label.value=cfg.label;
+
+    const btn=document.createElement("button");
+    btn.textContent="PRESS";
+    btn.style.background=cfg.color;
+
+    const cc=document.createElement("input");
+    cc.type="number";
+    cc.value=cfg.cc;
+
+    const color=document.createElement("input");
+    color.type="color";
+    color.value=cfg.color;
+
+    const press=v=>{
+        sendMIDI(cfg.cc,v);
+        sendWS("cc",{cc:cfg.cc,value:v,label:cfg.label});
+    };
+
+    btn.onpointerdown=()=>press(127);
+    btn.onpointerup=()=>press(0);
+    btn.onpointerleave=()=>press(0);
+
+    label.onchange=e=>cfg.label=e.target.value;
+    cc.onchange=e=>cfg.cc=parseInt(e.target.value)||0;
+
+    color.oninput=e=>{
+        cfg.color=e.target.value;
+        btn.style.background=cfg.color;
+        div.style.background=cfg.color+"22";
+    };
+
+    div.append(label,btn,
+        document.createTextNode("CC"),cc,
+        color);
+
+    return div;
+}
+
+// build UI
+const knobGrid=document.getElementById("knobs");
+knobs.forEach(k=>knobGrid.appendChild(createKnob(k)));
+
+const buttonGrid=document.getElementById("buttons");
+buttons.forEach(b=>buttonGrid.appendChild(createButton(b)));
+
+</script>
+</body>
+</html>
