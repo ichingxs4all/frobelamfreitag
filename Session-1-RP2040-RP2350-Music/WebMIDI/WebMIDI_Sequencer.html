@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>WebMIDI Pro Sequencer</title>
+
+<style>
+body{background:#111;color:#eee;font-family:sans-serif;text-align:center}
+.track{border:1px solid #444;margin:10px;padding:10px}
+.steps{display:flex;justify-content:center}
+.step{background:#222;border-radius:8px;padding:8px;margin:4px;width:120px}
+.step.active{background:#2a6}
+.step.playing{outline:3px solid #ffd400}
+
+.knob{
+ width:50px;height:50px;border-radius:50%;
+ background:#333;margin:auto;cursor:ns-resize;
+ position:relative;
+}
+.knob::after{
+ content:"";position:absolute;width:3px;height:20px;background:white;
+ left:50%;bottom:50%;
+ transform-origin:bottom center;
+ transform:translateX(-50%) rotate(var(--rot,-135deg));
+}
+label{font-size:11px;display:block}
+.noteName{font-size:12px;color:#9cf;margin-top:2px}
+</style>
+</head>
+
+<body>
+
+<h2>WebMIDI 3-Track Sequencer</h2>
+
+MIDI OUT <select id="midiOut"></select>
+MIDI IN <select id="midiIn"></select>
+
+Sync:
+<select id="syncMode">
+<option value="internal">Internal</option>
+<option value="external">External MIDI Clock</option>
+</select>
+
+<button id="startBtn">Start</button>
+<button id="stopBtn">Stop</button>
+
+<div id="tempo"></div>
+<div id="tempoLabel">Tempo 120 BPM</div>
+
+<div id="tracks"></div>
+
+<script>
+/* =========================
+   GLOBAL
+========================= */
+const TRACKS=3, STEPS=8;
+let tempo=120;
+let stepTime=calcStepTime();
+let syncMode="internal";
+
+const audioCtx=new AudioContext();
+let nextNoteTime=0;
+let timer;
+let currentStep=0;
+
+let midiAccess,midiOut,midiIn;
+
+/* active notes per track */
+const activeNotes=[{}, {}, {}];
+
+/* =========================
+   NOTE NAME
+========================= */
+const names=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+function noteName(n){
+ return names[n%12]+(Math.floor(n/12)-1);
+}
+
+/* ========================= */
+function calcStepTime(){ return 60/tempo/2 }
+
+/* =========================
+   DATA
+========================= */
+const seq=[];
+for(let t=0;t<TRACKS;t++){
+ seq[t]=[];
+ for(let s=0;s<STEPS;s++)
+  seq[t][s]={on:false,note:60,velocity:100,lengthMs:200};
+}
+
+/* =========================
+   MIDI SETUP
+========================= */
+navigator.requestMIDIAccess().then(m=>{
+ midiAccess=m;
+
+ const outSel=midiOut=document.getElementById("midiOut");
+ const inSel=document.getElementById("midiIn");
+
+ for(let o of m.outputs.values()){
+  let opt=new Option(o.name,o.id);
+  outSel.add(opt);
+ }
+ for(let i of m.inputs.values()){
+  let opt=new Option(i.name,i.id);
+  inSel.add(opt);
+ }
+
+ outSel.onchange=()=>midiOut=m.outputs.get(outSel.value);
+ inSel.onchange=()=>{
+   if(midiIn) midiIn.onmidimessage=null;
+   midiIn=m.inputs.get(inSel.value);
+   midiIn.onmidimessage=handleMidiIn;
+ };
+
+ midiOut=m.outputs.values().next().value;
+});
+
+/* =========================
+   MIDI CLOCK INPUT
+========================= */
+let clockCounter=0;
+
+function handleMidiIn(e){
+ const d=e.data[0];
+
+ if(syncMode!=="external") return;
+
+ if(d===0xF8){ // clock
+   clockCounter++;
+   if(clockCounter>=12){ // 12 clocks = 8th note
+     clockCounter=0;
+     externalStep();
+   }
+ }
+
+ if(d===0xFA){ currentStep=0 }
+ if(d===0xFC){ stopInternal() }
+}
+
+/* =========================
+   KNOB
+========================= */
+function knob(label,min,max,val,onChange,showNote=false){
+
+ const wrap=document.createElement("div");
+ const k=document.createElement("div");
+ k.className="knob";
+
+ const l=document.createElement("label");
+ l.innerText=label;
+
+ const noteDisplay=document.createElement("div");
+ noteDisplay.className="noteName";
+
+ function update(){
+  const norm=(val-min)/(max-min);
+  const deg=-135+norm*270;
+  k.style.setProperty("--rot",deg+"deg");
+  if(showNote) noteDisplay.innerText=noteName(Math.round(val));
+ }
+
+ update();
+
+ let startY,startVal;
+
+ k.onmousedown=e=>{
+  startY=e.clientY;
+  startVal=val;
+
+  function move(ev){
+   const delta=(startY-ev.clientY)*(max-min)/200;
+   val=Math.min(max,Math.max(min,startVal+delta));
+   update();
+   onChange(val);
+  }
+
+  function up(){
+   document.removeEventListener("mousemove",move);
+   document.removeEventListener("mouseup",up);
+  }
+
+  document.addEventListener("mousemove",move);
+  document.addEventListener("mouseup",up);
+ };
+
+ wrap.append(k,l,noteDisplay);
+ return wrap;
+}
+
+/* =========================
+   TEMPO
+========================= */
+const tempoDiv=document.getElementById("tempo");
+const tempoLabel=document.getElementById("tempoLabel");
+
+tempoDiv.appendChild(
+ knob("Tempo",40,240,tempo,v=>{
+  tempo=Math.round(v);
+  stepTime=calcStepTime();
+  tempoLabel.innerText=`Tempo ${tempo} BPM`;
+ })
+);
+
+/* =========================
+   BUILD UI
+========================= */
+const tracksDiv=document.getElementById("tracks");
+
+for(let t=0;t<TRACKS;t++){
+
+ const track=document.createElement("div");
+ track.className="track";
+ track.innerHTML=`<h3>Track ${t+1}</h3>`;
+
+ const ch=document.createElement("select");
+ for(let i=1;i<=16;i++) ch.add(new Option("Ch "+i,i-1));
+ track.appendChild(ch);
+
+ const row=document.createElement("div");
+ row.className="steps";
+
+ for(let s=0;s<STEPS;s++){
+  const step=document.createElement("div");
+  step.className="step";
+
+  const btn=document.createElement("button");
+  btn.textContent=s+1;
+  btn.onclick=()=>{
+   seq[t][s].on=!seq[t][s].on;
+   step.classList.toggle("active",seq[t][s].on);
+  };
+
+  step.appendChild(btn);
+
+  step.appendChild(
+   knob("Note",36,84,60,v=>{
+    seq[t][s].note=Math.round(v);
+   },true)
+  );
+
+  step.appendChild(
+   knob("Vel",1,127,100,v=>{
+    seq[t][s].velocity=Math.round(v);
+   })
+  );
+
+  step.appendChild(
+   knob("Len",100,1000,200,v=>{
+    seq[t][s].lengthMs=Math.max(100,v);
+   })
+  );
+
+  row.appendChild(step);
+ }
+
+ track.appendChild(row);
+ tracksDiv.appendChild(track);
+}
+
+/* =========================
+   NOTE PLAY (OVERLAP SAFE)
+========================= */
+function sendNote(track,step,audioTime){
+
+ if(!midiOut) return;
+
+ const d=seq[track][step];
+ if(!d.on) return;
+
+ const ch=document.querySelectorAll(".track select")[track].value;
+ const key=`${ch}_${d.note}`;
+
+ const now=performance.now()+
+  (audioTime-audioCtx.currentTime)*1000;
+
+ /* stop previous same note */
+ if(activeNotes[track][key])
+   midiOut.send([0x80+ +ch,d.note,0],now);
+
+ midiOut.send([0x90+ +ch,d.note,d.velocity],now);
+
+ midiOut.send([0x80+ +ch,d.note,0],now+d.lengthMs);
+
+ activeNotes[track][key]=true;
+}
+
+/* =========================
+   PLAYHEAD
+========================= */
+function highlight(step){
+ document.querySelectorAll(".step")
+ .forEach(e=>e.classList.remove("playing"));
+
+ document.querySelectorAll(".steps")
+ .forEach(r=>r.children[step].classList.add("playing"));
+}
+
+/* =========================
+   INTERNAL CLOCK
+========================= */
+function scheduler(){
+ while(nextNoteTime<audioCtx.currentTime+0.1){
+  playStep(nextNoteTime);
+  nextNoteTime+=stepTime;
+ }
+}
+
+function playStep(time){
+ for(let t=0;t<TRACKS;t++)
+  sendNote(t,currentStep,time);
+
+ highlight(currentStep);
+ currentStep=(currentStep+1)%STEPS;
+}
+
+/* =========================
+   EXTERNAL STEP
+========================= */
+function externalStep(){
+ const t=audioCtx.currentTime;
+ playStep(t);
+}
+
+/* =========================
+   TRANSPORT
+========================= */
+function startInternal(){
+ audioCtx.resume();
+ nextNoteTime=audioCtx.currentTime;
+ timer=setInterval(scheduler,25);
+}
+
+function stopInternal(){
+ clearInterval(timer);
+}
+
+startBtn.onclick=()=>{
+ syncMode=document.getElementById("syncMode").value;
+ currentStep=0;
+ if(syncMode==="internal") startInternal();
+};
+
+stopBtn.onclick=stopInternal;
+
+</script>
+</body>
+</html>
