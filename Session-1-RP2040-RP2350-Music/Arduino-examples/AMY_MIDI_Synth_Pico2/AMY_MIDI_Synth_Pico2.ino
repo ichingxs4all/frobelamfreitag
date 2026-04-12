@@ -1,6 +1,6 @@
 #include <AMY-Arduino.h>
 
-//#define LED_BUILTIN 3 //for PicoSynth
+#define LED_BUILTIN 3 //for PicoSynth
 
 bool enable_chorus = false;
 bool enable_echo = false;
@@ -9,6 +9,8 @@ bool enable_reverb = true;
 static long last_millis = 0;
 static const long millis_interval = 250;
 static bool led_state = 0;
+
+int potA,potB,potC,prevA,prevB,prevC;
 
 void setup_polyphony() {
  
@@ -39,7 +41,9 @@ void setup_polyphony() {
 }
 
 void setup() {
-
+  Serial.begin(115200);
+  analogReadResolution(12);
+  
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, 1);
 
@@ -77,6 +81,7 @@ void loop() {
   // Your loop() must contain this call to amy:
   amy_update();
   blink_led();
+  //readPots();
  
 }
 
@@ -88,4 +93,40 @@ void blink_led(){
     led_state = !led_state;
     digitalWrite(LED_BUILTIN, led_state);  // turn the LED on (HIGH is the voltage level)
   }
+}
+
+
+void readPots(){
+  int rawA= analogRead(A0);
+
+  int rawB= analogRead(A1);
+
+  int rawC= analogRead(A2);
+ 
+
+  if(potA != prevA) {
+    send_value(0, potA);
+    prevA==potA;
+  }
+  if(potB != prevB) {
+  send_value(1, potB);
+  prevB==potB;
+  }
+  if(potC != prevC) {
+    send_value(2, potC);
+    prevC==potC;
+  }
+
+  Serial.print(potA);
+  Serial.print(" , ");
+  Serial.print(potB);
+  Serial.print(" , ");
+  Serial.println(potC);
+
+
+}
+
+void send_value(int parameter, int value ){
+
+
 }
