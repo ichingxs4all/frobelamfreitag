@@ -5,9 +5,6 @@
 
 #include <Servo.h>
 
-Servo myservo;  // create servo object to control a servo
-// twelve servo objects can be created on most boards
-
 int current_byte = 0;
 int prev_byte = 0;
 
@@ -25,23 +22,24 @@ int face_roll;
 int face_mouth;
 
 void setup() {
-  Serial.begin(9600);
+  Serial1.begin(9600);
+  serwo1.attach(16);  // attaches the servo on GIO16 to the servo object
+  serwo2.attach(17);  
+  serwo3.attach(18);
+  serwo4.attach(19);
 
-  myservo.attach(16);  // attaches the servo on GIO2 to the servo object
 }
 
 void loop() {
-  if (Serial.available() > 0) {
-    current_byte = Serial.read();
+  if (Serial1.available() > 0) {
+    current_byte = Serial1.read();
     outputs_set();
     prev_byte = current_byte;
   }
 }
 
-
-
 void outputs_set() {
-
+ 
   //Face: X
   if (prev_byte == 201) {
     face_x = current_byte;
@@ -76,21 +74,15 @@ void outputs_set() {
   }
 }
 
-
 void servo1(int position) {
-  serwo1.attach(10);
   serwo1.write(position * 1.8);
 }
-
 void servo2(int position) {
-  serwo2.attach(9);
   serwo2.write(position * 1.8);
 }
 void servo3(int position) {
-  serwo3.attach(6);
   serwo3.write(position * 1.8);
 }
 void servo4(int position) {
-  serwo4.attach(5);
-  serwo4.write(position * 18);
+  serwo4.write(position * 1.8);
 }
