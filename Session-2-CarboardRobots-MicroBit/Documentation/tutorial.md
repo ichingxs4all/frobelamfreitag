@@ -50,12 +50,15 @@ Voor de basis plaats je de servo vanaf de buitenkant en leid je het kabeltje naa
 # Gebruik Computer Vision om je Robot te laten bewegen
 Op de frontpage van makecode.microbit.org importeer je een project vanaf een url
 - klik op de import knop rechts
+
 - klik op import url
 - vul onderstaande volgende url in en klik op *Go ahead!*  
 https://github.com/werkplaatsenpabobreda/face-tracking-app-v2---sample-code
-- doe iets met de servo op basis van de waarden die je binnen krijgt.
+- doe iets met de servo op basis van de waarden die je binnen krijgt   
 
-- open in een andere tab de volgende url:  
+![screenshot of project in makecode editor](edit_project.png)  
+
+- open in een andere tab de volgende url:   
 https://frobel.gepatto.nl/face
 
 - klik op het robotje en verbind met de micro:bit (bluetooth verbinding!)
