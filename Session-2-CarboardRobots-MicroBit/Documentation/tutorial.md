@@ -67,3 +67,5 @@ https://frobel.gepatto.nl/face
 - webapp is een mediapipe model dat in WebAssembly draait en dat door p5js gevisualiseerd wordt.  
 
 - waarden worden als string via uart over bluetooth naar de microbit gestuurd.
+
+- kijk in [hardware.md](hardware.md) naar de gebruikte onderdelen
